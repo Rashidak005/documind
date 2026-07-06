@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+.vscode/
+venv/
+chroma_db/
+uploaded_docs/
+*.pdf
+*.txt
+*.docx
+*.png
+*.jpg
+*.jpeg
