@@ -7,9 +7,9 @@ sdk: gradio
 sdk_version: 6.19.0
 app_file: app.py
 pinned: false
----#
+---
 
- DocuMind
+# DocuMind
 
 RAG-powered document Q&A app — upload a PDF, DOCX, TXT, or image and ask questions grounded entirely in that document's content, with every answer citing its source.
 
