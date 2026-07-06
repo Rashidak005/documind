@@ -4,8 +4,13 @@ from docx import Document
 from PIL import Image
 import pytesseract
 
-# Tell pytesseract exactly where Tesseract is installed on Windows
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+import platform
+
+# On Windows, we need to tell pytesseract exactly where Tesseract is installed.
+# On Linux (like Hugging Face Spaces), Tesseract gets installed system-wide
+# and is already available on the PATH, so no manual path is needed.
+if platform.system() == "Windows":
+    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 # --- PDF Loader ---
 
