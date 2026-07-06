@@ -125,29 +125,13 @@ html, body {
 }
 .trace-node-label { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--text-muted); letter-spacing: 0.05em; }
 
-/* ---- Body row ---- */
 #body-row {
     position: relative; z-index: 1;
-    height: calc(100vh - 108px) !important;
     padding: 16px 20px !important;
     gap: 16px !important;
 }
 
-#sidebar-col {
-    height: 100% !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-}
-
-#chat-col {
-    height: 100% !important;
-    display: flex !important;
-    flex-direction: column !important;
-    min-height: 0 !important;
-}
 #chatbox {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
     overflow-y: auto !important;
 }
 #chatbox .message.bot { border-left: 2px solid var(--cyan) !important; }
@@ -359,7 +343,8 @@ with gr.Blocks(title="DocuMind") as demo:
             chatbot = gr.Chatbot(
                 label=None,
                 show_label=False,
-                elem_id="chatbox"
+                elem_id="chatbox",
+                height=460
             )
 
             with gr.Row():
