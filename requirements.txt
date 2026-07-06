@@ -1,0 +1,10 @@
+groq
+python-dotenv
+gradio
+pypdf
+python-docx
+pillow
+pytesseract
+langchain-text-splitters
+sentence-transformers
+chromadb
