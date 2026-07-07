@@ -8,18 +8,16 @@ from config import GROQ_API_KEY, MODEL_NAME
 
 client = Groq(api_key=GROQ_API_KEY)
 
-# --- Generate Answer From Retrieved Chunks ---
+# --- Generate Answer From Retrieved Chunks (Single Document) ---
 
 def generate_answer(query, chunks, distances=None):
 
-    # Format chunks into a numbered context block
     context_parts = []
     for i, chunk in enumerate(chunks):
         context_parts.append(f"[Source {i+1}]\n{chunk}")
 
     context = "\n\n".join(context_parts)
 
-    # Build the prompt
     prompt = f"""You are DocuMind, an intelligent document assistant. 
 Your job is to answer questions accurately using ONLY the provided document context.
 
@@ -55,11 +53,64 @@ Answer:"""
     return response.choices[0].message.content
 
 
+# --- Generate Answer From Multiple Documents ---
+
+def generate_multi_source_answer(query, chunks_with_sources):
+    """
+    Same as generate_answer(), but each chunk is tagged with which
+    document it came from, so the model can cite both the source
+    number AND the actual filename.
+
+    chunks_with_sources: list of dicts like {"text": "...", "source": "report.pdf"}
+    """
+
+    context_parts = []
+    for i, item in enumerate(chunks_with_sources):
+        context_parts.append(f"[Source {i+1} - {item['source']}]\n{item['text']}")
+
+    context = "\n\n".join(context_parts)
+
+    prompt = f"""You are DocuMind, an intelligent document assistant.
+Your job is to answer questions accurately using ONLY the provided context below,
+which comes from multiple documents.
+
+Rules you must follow:
+- Answer using ONLY information from the context below
+- If the answer is not in the context, say exactly: "I could not find this information in the uploaded documents."
+- Always mention which source number AND which document your answer comes from
+- If information from multiple documents is relevant, mention all of them
+- Be concise but complete
+- Do not use any outside knowledge or make assumptions
+
+Document Context:
+{context}
+
+User Question: {query}
+
+Answer:"""
+
+    response = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are DocuMind, a precise document question-answering assistant. You only answer from provided context and always cite your sources by document name."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        temperature=0.1
+    )
+
+    return response.choices[0].message.content
+
+
 # --- Generate a Summary of the Document ---
 
 def generate_summary(chunks):
 
-    # Take the first 5 chunks for summarization
     sample_text = "\n\n".join(chunks[:5])
 
     prompt = f"""Based on the following document excerpts, provide a brief 3-4 sentence summary of what this document is about.

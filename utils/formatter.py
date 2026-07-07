@@ -5,9 +5,6 @@ def format_document_info(doc_info):
     """
     Takes the dictionary returned by pipeline.process_document()
     and formats it into a clean markdown string for display.
-
-    Expected keys in doc_info:
-    file_name, collection_name, chunk_count, character_count, summary
     """
 
     formatted = f"""### 📄 {doc_info['file_name']}
@@ -26,27 +23,41 @@ def format_answer(answer_text):
     """
     Cleans up the raw answer string from generator.generate_answer()
     and makes source citations like [Source 1] bold for display.
-
-    Example: "The perceptron works this way. [Source 1]"
-    becomes:  "The perceptron works this way. **[Source 1]**"
     """
 
-    # Remove any extra leading/trailing whitespace
     cleaned = answer_text.strip()
-
-    # Use regex to find patterns like [Source 1], [Source 12], etc.
-    # and wrap them in ** ** so markdown renders them bold
     formatted = re.sub(r"(\[Source \d+\])", r"**\1**", cleaned)
 
     return formatted
 
 
+def format_multi_source_answer(answer_text, chunks_with_sources):
+    """
+    Takes the raw answer and the list of {"text": ..., "source": ...} chunks
+    that were retrieved, and appends a clear "Sources" footer listing every
+    document that was searched and contributed context — guaranteed to show,
+    regardless of whether the model mentioned it in the answer itself.
+    """
+
+    cleaned = format_answer(answer_text)
+
+    # Get unique document names, in the order they first appeared
+    seen = []
+    for item in chunks_with_sources:
+        if item["source"] not in seen:
+            seen.append(item["source"])
+
+    if seen:
+        sources_footer = "\n\n---\n📄 **Sources searched:** " + ", ".join(seen)
+        return cleaned + sources_footer
+
+    return cleaned
+
+
 def format_document_list(collection_names):
     """
-    Takes a list of collection names (from pipeline.get_available_documents())
-    and formats it into a clean markdown bullet list.
-
-    Returns a friendly message if no documents have been uploaded yet.
+    Takes a list of collection names and formats it into a clean
+    markdown bullet list.
     """
 
     if not collection_names:
@@ -64,8 +75,7 @@ def format_document_list(collection_names):
 def format_error(error_message):
     """
     Wraps an error message in a consistent markdown format so it's
-    clearly visible to the user in the Gradio interface, instead of
-    showing a raw Python exception.
+    clearly visible to the user in the Gradio interface.
     """
 
     return f"⚠️ **Error:** {error_message}"
@@ -74,7 +84,6 @@ def format_error(error_message):
 # --- Quick Test ---
 if __name__ == "__main__":
 
-    # Test format_document_info
     test_doc_info = {
         "file_name": "yourfile.pdf",
         "collection_name": "yourfile",
@@ -85,19 +94,23 @@ if __name__ == "__main__":
     print("--- format_document_info ---")
     print(format_document_info(test_doc_info))
 
-    # Test format_answer
     test_answer = "The perceptron learning rule updates weights based on error. [Source 1]"
     print("--- format_answer ---")
     print(format_answer(test_answer))
 
-    # Test format_document_list with items
+    test_multi_chunks = [
+        {"text": "chunk 1", "source": "lecture_notes"},
+        {"text": "chunk 2", "source": "research_paper"},
+        {"text": "chunk 3", "source": "lecture_notes"},
+    ]
+    print("--- format_multi_source_answer ---")
+    print(format_multi_source_answer("Combined answer here. [Source 1]", test_multi_chunks))
+
     print("\n--- format_document_list (with items) ---")
     print(format_document_list(["yourfile", "lecture_notes", "research_paper"]))
 
-    # Test format_document_list with empty list
     print("\n--- format_document_list (empty) ---")
     print(format_document_list([]))
 
-    # Test format_error
     print("\n--- format_error ---")
     print(format_error("Unsupported file type: .exe"))

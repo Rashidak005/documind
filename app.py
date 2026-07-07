@@ -5,9 +5,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import gradio as gr
 
-from core.pipeline import process_document, ask_question, get_available_documents
+from core.pipeline import process_document, ask_question, ask_multiple_documents, get_available_documents
+from core.vector_store import delete_collection
 from utils.file_handler import save_uploaded_file
-from utils.formatter import format_document_info, format_answer, format_error
+from utils.formatter import format_document_info, format_answer, format_multi_source_answer, format_error
 
 # --- Custom CSS ---
 custom_css = """
@@ -259,16 +260,20 @@ def handle_upload(temp_file):
         return format_error("Please choose a file first."), gr.update(), "*No document selected.*"
 
     try:
+        # Save with a unique name on disk (prevents overwriting different files)
         saved_path = save_uploaded_file(temp_file.name)
-        file_name = os.path.basename(saved_path)
 
-        result = process_document(saved_path, file_name)
+        # But use the ORIGINAL filename for the collection name, so re-uploading
+        # the same document reuses the same collection instead of creating a duplicate
+        original_name = os.path.basename(temp_file.name)
+
+        result = process_document(saved_path, original_name)
         all_docs = get_available_documents()
 
-        status = f"✅ **{file_name}** processed successfully."
+        status = f"✅ **{original_name}** processed successfully."
         summary_md = format_document_info(result)
 
-        return status, gr.update(choices=all_docs, value=result["collection_name"]), summary_md
+        return status, gr.update(choices=all_docs, value=[result["collection_name"]]), summary_md
 
     except ValueError as e:
         return format_error(str(e)), gr.update(), "*No document selected.*"
@@ -276,20 +281,24 @@ def handle_upload(temp_file):
         return format_error(f"Something went wrong: {e}"), gr.update(), "*No document selected.*"
 
 
-def handle_ask(question, selected_doc, history):
+def handle_ask(question, selected_docs, history):
     history = history or []
 
-    if not selected_doc:
+    if not selected_docs:
         history.append({"role": "user", "content": question})
-        history.append({"role": "assistant", "content": "⚠️ Please select a document from the sidebar first."})
+        history.append({"role": "assistant", "content": "⚠️ Please select at least one document from the sidebar first."})
         return history, ""
 
     if not question or not question.strip():
         return history, ""
 
     try:
-        raw_answer = ask_question(question, selected_doc)
-        answer = format_answer(raw_answer)
+        if len(selected_docs) == 1:
+            raw_answer = ask_question(question, selected_docs[0])
+            answer = format_answer(raw_answer)
+        else:
+            raw_answer, chunks_with_sources = ask_multiple_documents(question, selected_docs)
+            answer = format_multi_source_answer(raw_answer, chunks_with_sources)
     except Exception as e:
         answer = format_error(f"Could not generate an answer: {e}")
 
@@ -297,6 +306,23 @@ def handle_ask(question, selected_doc, history):
     history.append({"role": "assistant", "content": answer})
 
     return history, ""
+
+
+def handle_delete(selected_docs):
+    """
+    Deletes every currently selected document's collection from ChromaDB
+    and refreshes the dropdown with whatever documents remain.
+    """
+    if not selected_docs:
+        return "*Select a document first.*", gr.update()
+
+    try:
+        for doc in selected_docs:
+            delete_collection(doc)
+        remaining_docs = get_available_documents()
+        return f"🗑️ Deleted {len(selected_docs)} document(s).", gr.update(choices=remaining_docs, value=[])
+    except Exception as e:
+        return format_error(f"Could not delete: {e}"), gr.update()
 
 
 def load_existing_documents():
@@ -328,12 +354,16 @@ with gr.Blocks(title="DocuMind") as demo:
             upload_status = gr.Markdown("")
 
             gr.Markdown("📚 YOUR DOCUMENTS", elem_classes="panel-heading")
+            gr.Markdown("*Select one document to ask it directly, or select several to search across all of them at once.*")
 
             document_dropdown = gr.Dropdown(
                 label="",
                 choices=[],
-                interactive=True
+                interactive=True,
+                multiselect=True
             )
+
+            delete_button = gr.Button("🗑️ Delete Selected Document(s)", variant="secondary")
 
             document_summary = gr.Markdown("*Upload a document to see its summary here.*")
 
@@ -349,7 +379,7 @@ with gr.Blocks(title="DocuMind") as demo:
 
             with gr.Row():
                 question_input = gr.Textbox(
-                    placeholder="Ask something about the selected document…",
+                    placeholder="Ask something about the selected document(s)…",
                     show_label=False,
                     scale=4
                 )
@@ -371,6 +401,12 @@ with gr.Blocks(title="DocuMind") as demo:
         fn=handle_ask,
         inputs=[question_input, document_dropdown, chatbot],
         outputs=[chatbot, question_input]
+    )
+
+    delete_button.click(
+        fn=handle_delete,
+        inputs=[document_dropdown],
+        outputs=[document_summary, document_dropdown]
     )
 
     demo.load(fn=load_existing_documents, outputs=[document_dropdown])

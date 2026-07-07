@@ -5,8 +5,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.loader import load_document
 from core.chunker import chunk_text
-from core.vector_store import store_chunks, search_chunks, list_collections
-from core.generator import generate_answer, generate_summary
+from core.vector_store import store_chunks, search_chunks, list_collections, delete_collection
+from core.generator import generate_answer, generate_summary, generate_multi_source_answer
 from config import UPLOAD_PATH
 
 import shutil
@@ -17,21 +17,14 @@ def process_document(file_path, file_name):
 
     print(f"\n=== Processing: {file_name} ===")
 
-    # Step 1 - Load text from document
     text = load_document(file_path)
-
-    # Step 2 - Chunk the text
     chunks = chunk_text(text)
 
-    # Step 3 - Create a clean collection name from filename
-    # Remove extension and replace spaces/special chars with underscores
     collection_name = os.path.splitext(file_name)[0]
     collection_name = "".join(c if c.isalnum() else "_" for c in collection_name).lower()
 
-    # Step 4 - Store chunks in ChromaDB
     store_chunks(chunks, collection_name)
 
-    # Step 5 - Generate a summary of the document
     summary = generate_summary(chunks)
 
     print(f"=== Document '{file_name}' processed successfully ===\n")
@@ -44,20 +37,57 @@ def process_document(file_path, file_name):
         "summary": summary
     }
 
-# --- Ask a Question About a Document ---
+
+# --- Ask a Question About a Single Document ---
 
 def ask_question(query, collection_name):
 
     if not query.strip():
         return "Please enter a question."
 
-    # Retrieve relevant chunks
     chunks, distances = search_chunks(query, collection_name)
-
-    # Generate answer from those chunks
     answer = generate_answer(query, chunks, distances)
 
     return answer
+
+
+# --- Ask a Question Across Multiple Documents ---
+
+def ask_multiple_documents(query, collection_names, top_k_per_doc=3):
+    """
+    Searches across several document collections at once, combines the
+    most relevant chunks from each (tagged with their source document),
+    and generates one answer that can reference multiple documents.
+
+    Returns a tuple: (answer_text, chunks_with_sources)
+    """
+
+    if not query.strip():
+        return "Please enter a question.", []
+
+    if not collection_names:
+        return "Please select at least one document.", []
+
+    all_chunks_with_sources = []
+
+    for collection_name in collection_names:
+        try:
+            chunks, distances = search_chunks(query, collection_name, top_k=top_k_per_doc)
+            for chunk in chunks:
+                all_chunks_with_sources.append({
+                    "text": chunk,
+                    "source": collection_name
+                })
+        except ValueError:
+            # Collection might be empty or missing — skip it, don't crash the whole search
+            continue
+
+    if not all_chunks_with_sources:
+        return "No relevant information found in the selected documents.", []
+
+    answer = generate_multi_source_answer(query, all_chunks_with_sources)
+    return answer, all_chunks_with_sources
+
 
 # --- Get All Available Documents ---
 
@@ -72,7 +102,6 @@ if __name__ == "__main__":
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     pdf_path = os.path.join(BASE_DIR, "yourfile.pdf")
 
-    # Process the document
     result = process_document(pdf_path, "yourfile.pdf")
 
     print("Document Info:")
